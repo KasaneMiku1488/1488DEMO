@@ -131,7 +131,7 @@ systemctl restart networking
 ```
 ---
 
-2. Доступ к сети Интернет (ISP) и настройка VLAN (HQ) 
+2. Доступ к сети Интернет (ISP)  
 
 Настройка ISP 
 
@@ -196,30 +196,12 @@ source /etc/network/interfaces.d/*
 auto lo
 iface lo inet loopback
 
-# Интерфейс в сторону ISP
 auto ens3
 iface ens3 inet static
   address 172.16.1.2/28
   gateway 172.16.1.1
 
-# VLAN 100 — HQ-SRV
-auto vlan100
-iface vlan100 inet static
-  address 192.168.100.1/27
-
-# VLAN 200 — HQ-CLI
-auto vlan200
-iface vlan200 inet static
-  address 192.168.100.33/28
-
-# VLAN 999 — управление
-auto vlan999
-iface vlan999 inet static
-  address 192.168.100.49/29
-
-# Мост OpenvSwitch
-auto hq-sw
-iface hq-sw inet manual
+post-up nft -f /etc/nftables.conf
 ```
 
 Выходим: `Ctrl+X`, `y`, `Enter`.
@@ -233,12 +215,149 @@ systemctl restart networking
 ```bash
 ip -br a
 ```
+<img width="975" height="204" alt="изображение" src="https://github.com/user-attachments/assets/5eb5c058-f737-45cc-8525-9775d3892786" />
 
-> Должны появиться интерфейсы `vlan100`, `vlan200`, `vlan999` с соответствующими IP-адресами.
+Попробуем пингануть с ISP HQ-RTR
+<img width="974" height="259" alt="изображение" src="https://github.com/user-attachments/assets/198a06dd-caf1-43d1-858e-f309026fae50" />
+А также в обратную сторону
+<img width="977" height="298" alt="изображение" src="https://github.com/user-attachments/assets/ee2a37dc-2acc-4d3d-97e8-b96cc86861f3" />
+Проверим также и Интернет
+<img width="954" height="278" alt="изображение" src="https://github.com/user-attachments/assets/4eb74038-eca3-4257-8ddc-4c60249a3b1e" />
 
-<!-- Вставьте скриншот вывода `ip -br a` -->
+На BR-RTR:
+```bash
+nano /etc/network/interfaces
+```
+<img width="748" height="805" alt="изображение" src="https://github.com/user-attachments/assets/916dbb03-bb1c-48df-b68c-872d1b9018ab" />
 
-После этого проверяем пинг до HQ-SRV и HQ-CLI с HQ-RTR — оба хоста должны отвечать, и у них должен появиться интернет.
+```bash
+auto ens3
+iface ens3 inet static
+address 172.16.2.2/28
+gateway 172.16.2.1
+
+auto ens4
+iface ens4 inet static
+address 192.168.200.1/28
+
+post-up nft -f /etc/nftables.conf
+```
+
+Перезагружаем службу сети
+```bash
+systemctl restart networking
+```
+Проверяем IP-адреса
+<img width="936" height="102" alt="изображение" src="https://github.com/user-attachments/assets/6e642b97-6fbe-435f-9413-3669c4d968d2" />
+
+На HQ-SRV:
+```bash
+nano /etc/network/interfaces
+```
+<img width="691" height="810" alt="изображение" src="https://github.com/user-attachments/assets/f32a41cf-e5fb-409c-9ee6-da27bdde659e" />
+```bash
+auto ens3
+iface ens3 inet static
+address 192.168.100.2/27
+gateway 192.168.100.1
+```
+Перезагружаем службу сети
+```bash
+systemctl restart networking
+```
+Проверяем IP-адреса
+<img width="952" height="72" alt="изображение" src="https://github.com/user-attachments/assets/716c5672-d1c8-4ceb-861b-0621dc19af69" />
+
+На HQ-CLI (временно, до 9 задания, позже он IP будет получать по DHCP):
+```bash
+nano /etc/network/interfaces
+```
+<img width="700" height="814" alt="изображение" src="https://github.com/user-attachments/assets/96a3b062-b789-4c1e-bffb-4cd64a46376d" />
+```bash
+auto ens3
+iface ens3 inet static
+address 192.168.100.34/28
+gateway 192.168.100.33
+```
+```bash
+systemctl restart networking
+```
+Проверяем IP-адреса
+<img width="954" height="74" alt="изображение" src="https://github.com/user-attachments/assets/daa1caf0-91d8-496e-af4a-3720077e2971" />
+
+На BR-SRV:
+```bash
+nano /etc/network/interfaces
+```
+<img width="713" height="804" alt="изображение" src="https://github.com/user-attachments/assets/9a865065-db77-4a54-8f81-154c3d6f23e0" />
+```bash
+auto ens3
+iface ens3 inet static
+address 192.168.200.2/28
+gateway 192.168.200.1
+```
+```bash
+systemctl restart networking
+```
+Проверяем IP-адреса
+<img width="947" height="121" alt="изображение" src="https://github.com/user-attachments/assets/3012dc65-c12f-47e3-9651-119018cb727a" />
+Рекомендую повторно проверить везде IP-адреса. Если что-то отвалилось:
+```bash
+systemctl restart networking
+```
+---
+
+## Задание 3 — Создайте локальные учетные записи на серверах HQ-SRV и BR-SRV:
+
+Создаем пользователей sshuser на HQ-SRV и BR-SRV
+```bash
+useradd -m -s /bin/bash sshuser -u 2026 -U 
+```
+Даем привилегии sudo
+```bash
+usermod -aG sudo sshuser 
+```
+Ставим пароль P@$$word на пользователя sshuser
+<img width="569" height="132" alt="изображение" src="https://github.com/user-attachments/assets/fd7565e6-a3c2-4990-8f95-95fff57e2be4" />
+Заходим в visudo
+И на HQ-SRV и на BR-SRV ОБЯЗАТЕЛЬНО в конце файла visudo
+добавляем строчку
+```bash
+sshuser         ALL=(ALL:ALL)         NOPASSWD:ALL
+```
+После слова sshuser нажимаем TAB, пишем ALL=(ALL:ALL), затем жмем пробел и пишем NOPASSWD:ALL
+<img width="903" height="821" alt="изображение" src="https://github.com/user-attachments/assets/9af306ec-9703-428a-bf40-46f7c708ac3c" />
+
+Проверяем наших пользователей sshuser
+```bash
+su - sshuser 
+```
+Обратим внимание, что при логине пароль не требуется
+<img width="408" height="42" alt="изображение" src="https://github.com/user-attachments/assets/d66630ff-09d2-4749-ac91-46d33a52cc25" />
+Повышаем права через sudo –i, видим что также все работает без пароля
+<img width="313" height="90" alt="изображение" src="https://github.com/user-attachments/assets/d2c2ea62-0023-454e-bf86-ccad403ba1e7" />
+
+Создаем пользователей net_admin на HQ-RTR и BR-RTR
+```bash
+useradd -m -s /bin/bash net_admin -U 
+```
+Даем привилегии sudo
+
+```bash
+usermod -aG sudo net_admin 
+```
+Ставим пароль P@ssw0rd на пользователя net_admin
+<img width="792" height="173" alt="изображение" src="https://github.com/user-attachments/assets/55ca1ba4-5be5-4ead-b478-97d135a1b40c" />
+Заходим в visudo
+И на HQ-RTR и на BR-RTR ОБЯЗАТЕЛЬНО в конце файла visudo
+добавляем строчку
+```bash
+sshuser         ALL=(ALL:ALL)         NOPASSWD:ALL
+```
+<img width="786" height="811" alt="изображение" src="https://github.com/user-attachments/assets/73ce3bf4-32f5-4517-8498-3301ffc2a00a" />
+Также все работает без пароля
+<img width="560" height="159" alt="изображение" src="https://github.com/user-attachments/assets/aeb4447c-a337-4c7f-8954-806e64789c91" />
+
 
 ---
 
