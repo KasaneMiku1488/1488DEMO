@@ -179,729 +179,741 @@ ip -br a
 > 
 > 
 
-Настройка HQ-RTR 
+### Редактирование `/etc/network/interfaces` на HQ-RTR
 
-Настроим сразу VLAN из задания 4.
-Сначала скачиваем пакет vlan (после появления доступа в интернет):
-
-```bash
-apt install vlan
-
-```
-
-> Если пакет не скачивается, проверяем `/etc/resolv.conf`, он должен иметь вид `nameserver 8.8.8.8`.
-> 
-> 
-> 
-
-Редактируем интерфейсы:
+Открываем файл:
 
 ```bash
 nano /etc/network/interfaces
-
 ```
 
-Приводим конфиг к такому виду:
+Приводим к следующему виду:
 
-```text
+```
+source /etc/network/interfaces.d/*
+
+# Loopback
 auto lo
 iface lo inet loopback
 
+# Интерфейс в сторону ISP
 auto ens3
 iface ens3 inet static
-address 172.16.1.2/28
-gateway 172.16.1.1
+  address 172.16.1.2/28
+  gateway 172.16.1.1
 
-auto ens4.100
-iface ens4.100 inet static
-address 192.168.100.1/27
-vlan_raw_device ens4
+# VLAN 100 — HQ-SRV
+auto vlan100
+iface vlan100 inet static
+  address 192.168.100.1/27
 
-auto ens5.200
-iface ens5.200 inet static
-address 192.168.100.33/28
-vlan_raw_device ens5
+# VLAN 200 — HQ-CLI
+auto vlan200
+iface vlan200 inet static
+  address 192.168.100.33/28
 
-auto ens6.999
-iface ens6.999 inet static
-address 192.168.100.49/29
-vlan_raw_device ens6
+# VLAN 999 — управление
+auto vlan999
+iface vlan999 inet static
+  address 192.168.100.49/29
 
-post-up nft -f /etc/nftables.conf
-
+# Мост OpenvSwitch
+auto hq-sw
+iface hq-sw inet manual
 ```
 
-Далее включаем форвардинг в `sysctl` и настраиваем маскарадинг в `nftables`:
+Выходим: `Ctrl+X`, `y`, `Enter`.
 
-```bash
-nano /etc/sysctl.d/sysctl.conf
-# Добавить: net.ipv4.ip_forward=1
-sysctl --system
-nano /etc/nftables.conf
-
-```
-
-
-
-Выполняем перезагрузку службы и проверяем IP-адреса:
+### Перезагружаем сеть и проверяем
 
 ```bash
 systemctl restart networking
+```
+
+```bash
 ip -br a
-
 ```
 
-Проверяем пинги до ISP, обратно и в Интернет:
+> Должны появиться интерфейсы `vlan100`, `vlan200`, `vlan999` с соответствующими IP-адресами.
 
-```bash
-ping 172.16.1.1
-ping ya.ru
+<!-- Вставьте скриншот вывода `ip -br a` -->
 
-```
-
-
-
-#### Настройка остальных узлов
-
-**На BR-RTR**:
-
-```bash
-nano /etc/network/interfaces
-
-```
-
-Включаем `ip_forward`, настраиваем `nftables`, перезагружаем сеть и проверяем IP.
-
-```bash
-nano /etc/sysctl.d/sysctl.conf
-sysctl --system
-nano /etc/nftables.conf
-systemctl restart networking
-ip -br a
-
-```
-
-**На HQ-SRV**:
-
-```bash
-nano /etc/network/interfaces
-
-```
-
-
-
-```bash
-systemctl restart networking
-ip -br a
-
-```
-
-> Если возникает ошибка, используем `reboot`.
-> 
-> 
-
-**На HQ-CLI (временно статика)**:
-
-```bash
-nano /etc/network/interfaces
-
-```
-
-
-
-```bash
-systemctl restart networking
-ip -br a
-
-```
-
-
-
-**На BR-SRV**:
-
-```bash
-nano /etc/network/interfaces
-
-```
-
-
-
-```bash
-systemctl restart networking
-ip -br a
-
-```
-
-
+После этого проверяем пинг до HQ-SRV и HQ-CLI с HQ-RTR — оба хоста должны отвечать, и у них должен появиться интернет.
 
 ---
 
-3. Локальные учетные записи на серверах 
+## Задание 4 — Безопасный удалённый доступ (SSH)
 
-**Пользователь `sshuser` на HQ-SRV и BR-SRV**:
-Создаем пользователя и даем привилегии `sudo`:
+**Требования:**
+- Порт: **2026**
+- Разрешить только пользователя `sshuser`
+- Максимум **2** попытки входа
+- Баннер: `Authorized access only`
 
-```bash
-useradd -m -s /bin/bash sshuser -u 2026 -U
-usermod -aG sudo sshuser
-
-```
-
-Ставим пароль `P@$$word`:
+### Установка SSH-сервера на HQ-SRV и BR-SRV
 
 ```bash
-passwd sshuser
-
+apt install openssh-server -y
 ```
 
-Настраиваем беспарольный `sudo` в `visudo` на обоих серверах:
-
-```bash
-visudo
-
-```
-
-ОБЯЗАТЕЛЬНО в конце файла добавляем строчку:
-
-```text
-sshuser ALL=(ALL:ALL) NOPASSWD:ALL
-
-```
-
-Проверяем вход без пароля:
-
-```bash
-su - sshuser
-sudo -i
-
-```
-
-**Пользователь `net_admin` на HQ-RTR и BR-RTR**:
-Аналогично создаем `net_admin` с паролем `P@ssw0rd` и добавляем беспарольный `sudo`:
-
-```bash
-useradd -m -s /bin/bash net_admin -U
-usermod -aG sudo net_admin
-passwd net_admin
-visudo
-
-```
-
-В конце файла добавляем:
-
-```text
-net_admin ALL=(ALL:ALL) NOPASSWD:ALL
-
-```
-
-Проверяем работу пользователя.
-
----
-
-4. Безопасный удаленный доступ (SSH) на HQ-SRV и BR-SRV 
-
-Устанавливаем SSH-сервер:
-
-```bash
-apt install openssh-server
-
-```
-
-Редактируем конфигурацию:
+### Редактирование конфигурации SSH
 
 ```bash
 nano /etc/ssh/sshd_config
-
 ```
 
-Раскомментируем и изменим параметры: порт 2026, разрешаем только `sshuser`, ограничиваем попытки, задаем баннер:
+Изменяем / добавляем строки:
 
-```text
+```
 Port 2026
 AllowUsers sshuser
 MaxAuthTries 2
 Banner /etc/ssh_banner
-
 ```
 
-Создадим баннер `/etc/ssh_banner`:
+### Создание баннера
 
 ```bash
 nano /etc/ssh_banner
-
 ```
 
-Вписываем текст в рамке из звездочек:
-
-```text
-*********************************
-* *
-* Authorized access only    *
-* *
-*********************************
+Содержимое файла:
 
 ```
+*******************************
+*   Authorized access only    *
+*******************************
+```
 
-Перезагружаем SSH на серверах:
+Повторяем на BR-SRV.
+
+### Перезапуск SSH
 
 ```bash
-systemctl restart ssh
-
+systemctl restart sshd
 ```
 
-Проверяем подключение с HQ-CLI:
+### Проверка подключения (с HQ-CLI на HQ-SRV)
 
 ```bash
 ssh sshuser@192.168.100.2 -p 2026
-
 ```
 
+<!-- Вставьте скриншот с отображением баннера при подключении -->
 
+Баннер должен отобразиться корректно. Вводим пароль — соединение устанавливается.
 
 ---
 
-5. IP-туннель (GRE) между HQ и BR 
+## Задание 5 — GRE-туннель между HQ-RTR и BR-RTR
 
-**На HQ-RTR**:
-Заходим в `nmtui`:
+**Цель:** Связать офисы HQ и BR защищённым туннелем.
+
+| Параметр | HQ-RTR | BR-RTR |
+|---|---|---|
+| Локальный IP (внешний) | `172.16.1.2` | `172.16.2.2` |
+| Удалённый IP | `172.16.2.2` | `172.16.1.2` |
+| IP туннеля | `10.10.0.1/30` | `10.10.0.2/30` |
+
+### Настройка на HQ-RTR
+
+Запускаем `nmtui`:
 
 ```bash
 nmtui
-
 ```
 
-Выбираем `Новое подключение` -> `Туннель IP` и настраиваем параметры GRE туннеля (Локальный и Удаленный IP, конфигурация IPv4).
-В настройках `Маршрутизация` добавляем маршрут к `ens3` BR-SRV.
+В интерфейсе:
+1. «Редактировать подключения» → «Добавить»
+2. Тип: **Туннель IP**
+3. Имя профиля: `gre`, Устройство: `tun1`
+4. Режим: **GRE**
+5. Родительский интерфейс: `ens3`
+6. Локальный IP: `172.16.1.2`
+7. Удалённый IP: `172.16.2.2`
+8. Конфигурация IPv4 → Вручную: `10.10.0.1/30`
 
+<!-- Вставьте скриншот nmtui с заполненными параметрами -->
 
-В конце файла `/etc/network/interfaces` добавляем строчку для поднятия интерфейса GRE.
-Перезапускаем службу сети и проверяем `tun1`.
-Изменяем TTL интерфейса GRE на 64.
-
-**На BR-RTR**:
-Производим аналогичную настройку в `nmtui` (создаем туннель, прописываем маршруты). Добавляем интерфейс GRE в `interfaces`, перезапускаем сеть, проверяем `tun1` и изменяем TTL на 64.
-Проверяем доступность туннеля и сетей пингами.
-
----
-
-6. Настройка DHCP для сети HQ-CLI 
-
-Установим DHCP-сервер на HQ-RTR:
-
-```bash
-apt install isc-dhcp-server -y
-nano /etc/default/isc-dhcp-server
-
-```
-
-Вписываем в `INTERFACESv4` значение `ens5.200`.
-Настроим сам DHCP:
-
-```bash
-nano /etc/dhcp/dhcpd.conf
-
-```
-
-Добавляем в конец настройку пула (время аренды увеличиваем, чтобы IP не менялся).
-
-
-```bash
-systemctl restart isc-dhcp-server
-
-```
-
-**На HQ-CLI** изменяем `interfaces` на получение IP по DHCP:
+### Добавляем строчку в `/etc/network/interfaces` на HQ-RTR
 
 ```bash
 nano /etc/network/interfaces
-
 ```
 
-```text
-auto ens3.200
-iface ens3.200 inet dhcp
-vlan_raw_device ens3
+В конце файла добавляем:
 
 ```
+post-up ip link set gre0 up
+```
 
-Удаляем старое подключение `Wired connection 1` в `nmtui`.
-Перезапускаем сеть и проверяем IP:
+### Перезапуск сети и проверка на HQ-RTR
 
 ```bash
 systemctl restart networking
+```
+
+```bash
 ip -br a
+```
 
+> Интерфейс `gre0` должен быть в статусе `UNKNOWN`, а `tun1` — получить IP `10.10.0.1/30`.
+
+<!-- Вставьте скриншот вывода `ip -br a` -->
+
+### Изменение TTL туннельного интерфейса GRE на HQ-RTR
+
+```bash
+nmcli connection modify gre ip-tunnel.ttl 64
 ```
 
 ---
 
-7. DNS-инфраструктура (dnsmasq) 
+### Настройка на BR-RTR
 
-Устанавливаем и настраиваем `dnsmasq`:
+Запускаем `nmtui`:
 
 ```bash
-apt install dnsmasq -y
-nano /etc/dnsmasq.conf
-
+nmtui
 ```
 
+1. «Редактировать подключения» → «Добавить»
+2. Тип: **Туннель IP**
+3. Имя профиля: `gre`, Устройство: `tun1`
+4. Режим: **GRE**
+5. Родительский интерфейс: `ens3`
+6. Локальный IP: `172.16.2.2`
+7. Удалённый IP: `172.16.1.2`
+8. Конфигурация IPv4 → Вручную: `10.10.0.2/30`
 
-
-Прописываем локальный DNS:
+### Добавляем строчку в `/etc/network/interfaces` на BR-RTR
 
 ```bash
-nano /etc/resolv.conf
-# Добавить: nameserver 127.0.0.1
-
+nano /etc/network/interfaces
 ```
 
-Перезапускаем службу и проверяем:
+В конце файла:
+
+```
+post-up ip link set gre0 up
+```
+
+### Перезапуск сети и проверка на BR-RTR
 
 ```bash
-systemctl restart dnsmasq
-ping ya.ru
-ping br-rtr.au-team.irpo
+systemctl restart networking
+```
 
+```bash
+ip -br a
+```
+
+> `gre0` — статус `UNKNOWN`, `tun1` — IP `10.10.0.2/30`.
+
+<!-- Вставьте скриншот вывода `ip -br a` -->
+
+### Изменение TTL на BR-RTR
+
+```bash
+nmcli connection modify gre ip-tunnel.ttl 64
+```
+
+> **Частая ошибка:** если появляется ошибка, проверьте в `nmtui` — после слова `gre` не должно быть пробела.
+
+### Проверка связности туннеля
+
+С BR-RTR пингуем HQ-RTR:
+
+```bash
+ping 10.10.0.1
+```
+
+<!-- Вставьте скриншот успешного пинга -->
+
+С HQ-RTR пингуем BR-RTR:
+
+```bash
+ping 10.10.0.2
+```
+
+<!-- Вставьте скриншот успешного пинга -->
+
+---
+
+## Задание 6 — Динамическая маршрутизация (OSPF / FRR)
+
+**Требования:**
+- Протокол: OSPF (link-state)
+- Только на интерфейсах туннеля (`tun1`)
+- Маршрутизаторы обмениваются маршрутами только друг с другом
+- Защита паролем
+
+### Установка FRR на HQ-RTR и BR-RTR
+
+```bash
+apt install frr -y
 ```
 
 ---
 
-8. Настройка часового пояса 
+### Настройка HQ-RTR
 
-Повторяем на всех устройствах (выберем Красноярск):
+#### Шаг 1 — Включить OSPF в конфигурации FRR
 
 ```bash
-timedatectl list-timezones
-timedatectl set-timezone Asia/Krasnoyarsk
+nano /etc/frr/daemons
+```
 
+Находим строку `ospfd=no` и меняем на:
+
+```
+ospfd=yes
+```
+
+#### Шаг 2 — Перезапустить FRR
+
+```bash
+systemctl restart frr
+```
+
+#### Шаг 3 — Войти в CLI FRR
+
+```bash
+vtysh
+```
+
+#### Шаг 4 — Настройка OSPF
+
+```
+hq-rtr.au-team.irpo# conf t
+```
+
+```
+hq-rtr.au-team.irpo(config)# router ospf
+```
+
+```
+hq-rtr.au-team.irpo(config-router)# router-id 1.1.1.1
+```
+
+Объявляем локальные сети и туннель:
+
+```
+hq-rtr.au-team.irpo(config-router)# no passive-interface default
+hq-rtr.au-team.irpo(config-router)# network 192.168.100.0/27 area 0
+hq-rtr.au-team.irpo(config-router)# network 192.168.100.32/28 area 0
+hq-rtr.au-team.irpo(config-router)# network 10.10.0.0/30 area 0
+```
+
+Включаем аутентификацию для зоны:
+
+```
+hq-rtr.au-team.irpo(config-router)# area 0 authentication
+```
+
+Переходим к настройке туннельного интерфейса:
+
+```
+hq-rtr.au-team.irpo(config-router)# int tun1
+```
+
+```
+hq-rtr.au-team.irpo(config-if)# no ip ospf passive
+```
+
+```
+hq-rtr.au-team.irpo(config-if)# no ip ospf network broadcast
+```
+
+Настраиваем аутентификацию:
+
+```
+hq-rtr.au-team.irpo(config-if)# ip ospf authentication
+hq-rtr.au-team.irpo(config-if)# ip ospf authentication-key password
+```
+
+#### Шаг 5 — Сохранить конфигурацию
+
+```
+hq-rtr.au-team.irpo(config-if)# exit
+hq-rtr.au-team.irpo(config)# exit
+hq-rtr.au-team.irpo# wr
 ```
 
 ---
 
-Модуль 2 
+### Настройка BR-RTR
 
-1. Настройка контроллера домена Samba DC (BR-SRV) 
+#### Шаг 1 — Включить OSPF
 
-**Внимание:** В DHCP HQ-RTR нужно поменять IP DNS сервера на BR-SRV:
+```bash
+nano /etc/frr/daemons
+```
+
+```
+ospfd=yes
+```
+
+#### Шаг 2 — Перезапустить FRR
+
+```bash
+systemctl restart frr
+```
+
+#### Шаг 3 — Войти в CLI FRR
+
+```bash
+vtysh
+```
+
+#### Шаг 4 — Настройка OSPF
+
+```
+br-rtr.au-team.irpo# conf t
+```
+
+```
+br-rtr.au-team.irpo(config)# router ospf
+```
+
+```
+br-rtr.au-team.irpo(config-router)# router-id 2.2.2.2
+```
+
+```
+br-rtr.au-team.irpo(config-router)# no passive-interface default
+br-rtr.au-team.irpo(config-router)# network 192.168.200.0/28 area 0
+br-rtr.au-team.irpo(config-router)# network 10.10.0.0/30 area 0
+```
+
+```
+br-rtr.au-team.irpo(config-router)# area 0 authentication
+```
+
+```
+br-rtr.au-team.irpo(config-router)# int tun1
+```
+
+```
+br-rtr.au-team.irpo(config-if)# no ip ospf passive
+```
+
+```
+br-rtr.au-team.irpo(config-if)# no ip ospf network broadcast
+```
+
+```
+br-rtr.au-team.irpo(config-if)# ip ospf authentication
+br-rtr.au-team.irpo(config-if)# ip ospf authentication-key password
+```
+
+#### Шаг 5 — Сохранить конфигурацию
+
+```
+br-rtr.au-team.irpo(config-if)# exit
+br-rtr.au-team.irpo(config)# exit
+br-rtr.au-team.irpo# wr
+```
+
+---
+
+### Перезагрузка и проверка
+
+Перезагружаем оба маршрутизатора:
+
+```bash
+reboot
+```
+
+После загрузки входим в FRR и проверяем соседство:
+
+```bash
+vtysh
+```
+
+На HQ-RTR:
+
+```
+hq-rtr.au-team.irpo# show ip ospf neighbor
+```
+
+<!-- Вставьте скриншот — должен отображаться сосед 2.2.2.2 в состоянии Full -->
+
+На BR-RTR:
+
+```
+br-rtr.au-team.irpo# show ip ospf neighbor
+```
+
+<!-- Вставьте скриншот — должен отображаться сосед 1.1.1.1 в состоянии Full -->
+
+Проверяем связность — пингуем BR-SRV с HQ-SRV:
+
+```bash
+ping 192.168.200.2
+```
+
+<!-- Вставьте скриншот успешного пинга -->
+
+> **Если серверы не видят друг друга**, выполните на обоих маршрутизаторах:
+> ```bash
+> systemctl restart frr
+> ```
+
+---
+
+## Задание 9 — DHCP-сервер на HQ-RTR
+
+**Требования:**
+- Подсеть VLAN 200 (`192.168.100.32/28`)
+- Сервер DHCP — HQ-RTR
+- Клиент — HQ-CLI
+- Шлюз: `192.168.100.33`
+- DNS-сервер: `192.168.100.2` (HQ-SRV)
+- DNS-суффикс: `au-team.irpo`
+- Адрес маршрутизатора исключить из выдачи
+
+### Установка DHCP-сервера на HQ-RTR
+
+```bash
+apt install isc-dhcp-server -y
+```
+
+### Указываем интерфейс для DHCP
+
+```bash
+nano /etc/default/isc-dhcp-server
+```
+
+Находим строку `INTERFACESv4=""` и меняем на:
+
+```
+INTERFACESv4="vlan200"
+```
+
+### Настройка DHCP
 
 ```bash
 nano /etc/dhcp/dhcpd.conf
-# option domain-name-server 192.168.200.2;
+```
+
+В начале файла меняем строки:
+
+```
+# было:
+option domain-name "example.org";
+option domain-name-servers ns1.example.org, ns2.example.org;
+
+# стало:
+option domain-name "au-team.irpo";
+option domain-name-servers 192.168.100.2;
+```
+
+В конце файла добавляем:
+
+```
+subnet 192.168.100.32 netmask 255.255.255.240 {
+  range 192.168.100.34 192.168.100.47;
+  option routers 192.168.100.33;
+  option domain-name-servers 192.168.100.2;
+  option domain-name "au-team.irpo";
+  default-lease-time 600;
+  max-lease-time 7200;
+}
+```
+
+> **Важно:** перед `range` и `option` — 2 пробела.
+
+**Пояснение параметров:**
+- `subnet` — сеть, в которой работает DHCP
+- `range` — диапазон выдаваемых адресов
+- `option domain-name-servers` — DNS-серверы
+- `option domain-name` — суффикс доменного имени
+- `option routers` — шлюз по умолчанию
+- `default-lease-time` / `max-lease-time` — время аренды адреса в секундах
+
+### Перезапуск DHCP
+
+```bash
 systemctl restart isc-dhcp-server
-
 ```
 
-
-
-**Установка Samba на BR-SRV**:
+### Настройка HQ-CLI на получение адреса по DHCP
 
 ```bash
-apt update
-apt install -y samba smbclient winbind libnss-winbind krb5-user net-tools
-
+nano /etc/network/interfaces
 ```
 
-В синем окне настройки вводим `AU-TEAM.IRPO`, `br-srv.au-team.irpo`.
-Переименовываем конфиг, останавливаем службы и создаем домен:
+Меняем статическую настройку:
+
+```
+# Было (статика):
+iface ens3 inet static
+  address 192.168.100.34/28
+  gateway 192.168.100.33
+
+# Стало (DHCP):
+auto ens3
+iface ens3 inet dhcp
+```
+
+> **P.S.** В `nmtui` рекомендуется удалить `Wired connection 1`, иначе интерфейс получит два IP-адреса.
 
 ```bash
-mv /etc/samba/smb.conf /etc/samba/smb.conf.bak
-systemctl stop smbd nmbd winbind
-systemctl stop samba-ad-dc
-samba-tool domain provision --use-rfc2307 --interactive
-
+systemctl restart networking
 ```
 
-Везде жмем `ENTER` до `Administrator`, пароль вводим `P@ssw0rd`.
-Запускаем службы и копируем krb5.conf:
+### Проверка выдачи адреса
 
 ```bash
-systemctl start smbd nmbd winbind
-systemctl start samba-ad-dc
-cp /var/lib/samba/private/krb5.conf /etc/krb5.conf
-
+ip -br a
 ```
 
-Создаем пользователей в домене.
+<!-- Вставьте скриншот — ens3 должен получить адрес из диапазона 192.168.100.34–47 -->
 
-
-**Ввод HQ-CLI в домен**:
-
-```bash
-apt update && apt install -y realmd sssd sssd-tools libnss-sss libpam-sss adcli packagekit
-nano /etc/resolv.conf # Вписать nameserver 192.168.200.2 и удалить старый
-realm join -v au-team.irpo # Ввести пароль P@ssw0rd
-pam-auth-update --enable mkhomedir
-realm deny --all
-realm permit -g hq@au-team.irpo
-
-```
-
-Выдаем права и проверяем:
-
-```bash
-nano /etc/sudoers.d/hq-users
-# Вписать: %hq@au-team.irpo ALL=(ALL) /usr/bin/cat, /usr/bin/grep, /usr/bin/id
-su - hquser1@au-team.irpo
-sudo id
-
-```
+> Если выдался адрес `192.168.100.35` — значит в `nmtui` не было удалено лишнее подключение; это не критично.
 
 ---
 
-2. Служба сетевого времени Chrony 
+## Задание 10 — DNS-сервер на HQ-SRV (dnsmasq)
 
-**ISP**:
+**Требования:**
+- Основной DNS — HQ-SRV
+- Разрешение имён в адреса и обратно (согласно таблице)
+- DNS-пересылка на публичный сервер (`77.88.8.7`, `77.88.8.3` или другой)
 
-```bash
-apt install chrony -y
-nano /etc/chrony/chrony.conf
+> **Если не скачивается dnsmasq:**
+> ```bash
+> apt-get update
+> ```
 
-```
-
-Комментируем строки `pool` и добавляем:
-
-```text
-server ntp1.vniiftri.ru iburst prefer
-local stratum 5
-allow 0.0.0.0/0
-
-```
+### Установка dnsmasq на HQ-SRV
 
 ```bash
-systemctl restart chronyd
-
+apt install dnsmasq -y
 ```
 
-
-
-**Офисы HQ и BR (все остальные устройства)**:
-Устанавливаем chrony и настраиваем синхронизацию с локальными маршрутизаторами:
+### Конфигурация dnsmasq
 
 ```bash
-apt install chrony -y
-nano /etc/chrony/chrony.conf
-# Комментируем pool
-
+nano /etc/dnsmasq.conf
 ```
 
-Для офиса HQ сервер — `172.16.1.1 iburst`, для BR — `172.16.2.1 iburst`.
+Добавляем в начало или конец файла:
+
+```
+domain=au-team.irpo
+listen-address=192.168.100.2
+no-resolv
+no-hosts
+address=/hq-rtr.au-team.irpo/192.168.100.1
+address=/hq-srv.au-team.irpo/192.168.100.2
+address=/hq-cli.au-team.irpo/192.168.100.34
+address=/br-rtr.au-team.irpo/192.168.200.1
+address=/br-srv.au-team.irpo/192.168.200.2
+address=/isp.au-team.irpo/172.16.1.1
+server=77.88.8.7
+```
+
+<!-- Вставьте скриншот конфига dnsmasq -->
+
+### Настройка resolv.conf на HQ-SRV
 
 ```bash
-systemctl restart chronyd
-
+nano /etc/resolv.conf
 ```
 
+Прописываем:
 
+```
+nameserver 127.0.0.1
+```
+
+### Проверка
+
+Проверяем интернет с разрешением DNS:
+
+```bash
+ping ya.ru
+```
+
+Проверяем разрешение внутренних имён:
+
+```bash
+ping br-rtr.au-team.irpo
+```
+
+<!-- Вставьте скриншот успешного пинга по доменному имени -->
+
+Если пингуется — DNS преобразует имена в IP-адреса корректно.
 
 ---
 
-3. Конфигурация Ansible (BR-SRV) 
+## Задание 11 — Настройка часового пояса
 
-На **BR-SRV**:
+Выполняется на всех устройствах: **ISP, HQ-RTR, BR-RTR, HQ-SRV, HQ-CLI, BR-SRV**.
 
-```bash
-apt install ansible sshpass -y
-mkdir -p /etc/ansible
-nano /etc/ansible/ansible.cfg
-
-```
-
-Вписываем:
-
-```text
-[defaults]
-host_key_checking=False
-
-```
-
-Редактируем инвентарь `nano /etc/ansible/hosts`.
-
-
-На **HQ-RTR, BR-RTR и HQ-CLI** устанавливаем `openssh-server`, создаем пользователя `sshuser` (если не создан) и выдаем права.
-Проверка на BR-SRV:
+### Проверить текущий часовой пояс
 
 ```bash
-ansible all -m ping
-
+timedatectl
 ```
+
+<!-- Вставьте скриншот вывода timedatectl -->
+
+### Посмотреть список доступных поясов
+
+```bash
+ls /usr/share/zoneinfo/
+```
+
+### Посмотреть список регионов
+
+```bash
+ls /usr/share/zoneinfo/Asia
+```
+
+### Установить часовой пояс (пример — Красноярск)
+
+```bash
+timedatectl set-timezone Asia/Krasnoyarsk
+```
+
+### При необходимости — изменить дату и время вручную
+
+```bash
+timedatectl set-time "2025-05-10 15:53:00"
+```
+
+### Проверить результат
+
+```bash
+timedatectl
+```
+
+<!-- Вставьте скриншот — Time zone должен быть Asia/Krasnoyarsk -->
+
+> Повторить на всех устройствах: ISP, HQ-RTR, BR-RTR, HQ-SRV, HQ-CLI, BR-SRV.
 
 ---
 
-4. Веб-приложение в Docker (BR-SRV) 
+<details>
+<summary>📋 Таблица IP-адресации</summary>
+
+| Устройство | IP-адрес | Шлюз | Сеть |
+|---|---|---|---|
+| ISP | DHCP | — | Интернет |
+| ISP | 172.16.1.1/28 | — | ISP → HQ-RTR |
+| ISP | 172.16.2.1/28 | — | ISP → BR-RTR |
+| HQ-RTR | 172.16.1.2/28 | 172.16.1.1 | ISP → HQ-RTR |
+| HQ-RTR | 192.168.100.1/27 | — | VLAN100 (HQ-SRV) |
+| HQ-RTR | 192.168.100.33/28 | — | VLAN200 (HQ-CLI) |
+| HQ-RTR | 192.168.100.49/29 | — | VLAN999 (управление) |
+| HQ-SRV | 192.168.100.2/27 | 192.168.100.1 | VLAN100 |
+| HQ-CLI | DHCP | 192.168.100.33 | VLAN200 |
+| BR-RTR | 172.16.2.2/28 | 172.16.2.1 | ISP → BR-RTR |
+| BR-RTR | 192.168.200.1/28 | — | BR-RTR → BR-SRV |
+| BR-SRV | 192.168.200.2/28 | 192.168.200.1 | BR-RTR → BR-SRV |
+
+</details>
 
-На **BR-SRV**:
-
-```bash
-apt install docker.io docker-compose -y
-
-```
-
-Извлекаем образы из `Additional.iso` в `/root`.
-
-```bash
-docker image load -i /root/Additional/docker/site_latest.tar
-docker image load -i /root/Additional/docker/mariadb_latest.tar
-docker images
-mkdir testapp
-cd testapp/
-nano docker-compose.yaml
-
-```
-
-Поднимаем контейнеры и проверяем доступ с HQ-CLI `http://192.168.200.2:8080`:
-
-```bash
-docker-compose -f docker-compose.yaml up -d
-docker ps
-
-```
-
----
-
-5. Веб-приложение на HQ-SRV (Apache) 
-
-На **HQ-SRV** устанавливаем стек:
-
-```bash
-apt update
-apt install apache2 mariadb-server mariadb-client php8.4 php8.4-mysqli -y
-
-```
-
-Копируем дамп из извлеченной папки:
-
-```bash
-cp /root/Additional/web/dump.sql /tmp
-mysql -u root
-
-```
-
-В MariaDB выполняем:
-
-```sql
-CREATE DATABASE webdb;
-CREATE USER 'web'@'localhost' IDENTIFIED BY 'P@ssw0rd';
-GRANT ALL PRIVILEGES ON webdb.* TO 'web'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-
-```
-
-Импортируем БД и настраиваем директорию сайта:
-
-```bash
-mysql -u root webdb < /tmp/dump.sql
-mkdir -p /var/www/html
-cp /root/Additional/web/index.php /var/www/html
-chown -R www-data:www-data /var/www/html
-chmod -R 755 /var/www/html
-nano /var/www/html/index.php
-rm -f /var/www/html/index.html
-systemctl restart apache2
-
-```
-
-
-
-Указываем DNS HQ-SRV в DHCP HQ-RTR и проверяем доступ к сайту.
-
----
-
-6. NAT (Трансляция портов) 
-
-Меняем порт Apache на **HQ-SRV**:
-
-```bash
-nano /etc/apache2/sites-available/000-default.conf # Сменить на <VirtualHost *:8080>
-nano /etc/apache2/ports.conf # Сменить на Listen 8080
-systemctl restart apache2
-
-```
-
-
-
-Вносим правила `dnat` в `nftables` на **HQ-RTR** и **BR-RTR**, перезагружаем сеть.
-
-
-Проверяем с **ISP**:
-
-```bash
-ssh sshuser@172.16.1.2 -p 2026
-ssh sshuser@172.16.2.2 -p 2026
-
-```
-
----
-
-7. Nginx Обратный прокси (ISP) 
-
-Устанавливаем Nginx на **ISP**:
-
-```bash
-apt install nginx apache2-utils -y
-nano /etc/nginx/sites-available/proxy
-
-```
-
-
-
-```bash
-ln -s /etc/nginx/sites-available/proxy /etc/nginx/sites-enabled
-nano /etc/nginx/nginx.conf
-# Раскомментируем: server_names_hash_bucket_size 64;
-
-```
-
-
-
-Прописываем хосты и перезапускаем nginx:
-
-```bash
-nano /etc/hosts
-# 172.16.1.1 web.au-team.irpo
-# 172.16.2.1 docker.au-team.irpo
-systemctl restart nginx
-
-```
-
-Проверяем доступ по URL.
-
----
-
-8. Web-based аутентификация 
-
-Создаем файл паролей на **ISP**:
-
-```bash
-htpasswd -bc /etc/nginx/.htpasswd WEB P@ssw0rd
-
-```
-
-Добавляем правила в конфигурацию `proxy` и перезапускаем nginx:
-
-```bash
-nano /etc/nginx/sites-enabled/proxy
-systemctl restart nginx
-
-```
-
-При доступе к сайту вводим пользователя `WEB` и пароль `P@ssw0rd`.
-
----
-
-9. Установка Яндекс Браузера (HQ-CLI) 
-
-На **HQ-CLI** скачиваем `Yandex.deb` и устанавливаем:
-
-```bash
-apt install ./Yandex.deb -y
-
-```
-
-Запускаем с параметром `no-sandbox`:
-
-```bash
-yandex-browser-stable --no-sandbox
-
-```
