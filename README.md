@@ -163,40 +163,7 @@ post-up nft -f /etc/nftables.conf
 
 Выходим с файла: `Ctrl+X`, `y`, `Enter`.
 
-Редактируем `sysctl.conf` для включения маршрутизации:
 
-```bash
-nano /etc/sysctl.d/sysctl.conf
-
-```
-
-```text
-net.ipv4.ip_forward=1
-
-```
-
-Применяем правила `sysctl`:
-
-```bash
-sysctl --system
-
-```
-
-Делаем маскарадинг в `nftables`:
-
-```bash
-nano /etc/nftables.conf
-
-```
-
-
-
-Перезагружаем службу сети:
-
-```bash
-systemctl restart networking
-
-```
 
 Проверяем IP-адреса:
 
@@ -204,6 +171,7 @@ systemctl restart networking
 ip -br a
 
 ```
+<img width="977" height="126" alt="изображение" src="https://github.com/user-attachments/assets/718a57ec-c6ca-4dca-a88e-83681bb4f064" />
 
 
 
