@@ -80,14 +80,55 @@ nano /etc/apt/sources.list
 ```
 
 Ставим комментарий на первой строчке символом `#`:
+<img width="837" height="416" alt="изображение" src="https://github.com/user-attachments/assets/e02eb8cc-97ac-4925-946f-de1a8080ce15" />
 
 ```text
 #deb cdrom:[Debian GNU/Linux 13.1.0 ...
 
 ```
+СДЕЛАТЬ НА ISP, HQ-RTR И BR-RTR СТРОГО, ИНАЧЕ ИНЕТ НЕ БУДЕТ РАБОТАТЬ
+Редактируем sysctl.conf  
+```bash
+nano /etc/sysctl.d/sysctl.conf
+```
+```bash
+net.ipv4.ip_farward=1
+```
+Выходим с файла: Ctrl+X, y, Enter
 
+Применяем правила sysctl
+```bash
+sysctl --system
+```
+---
 
-
+Сделаем динамическую трансляцию адресов (проделать также на HQ- RTR, BR-RTR!)
+```bash
+nano /etc/nftables.conf
+```
+Приводим файл к такому виду (делаем маскарадинг)
+<img width="975" height="625" alt="изображение" src="https://github.com/user-attachments/assets/ff3ac892-56fd-4bc8-b943-95b7a607fb08" />
+```bash
+table ip nat {
+         chain postrouting {
+               type nat hook postrouting priority 100; policy accept
+               meta l4proto { gre, ipip, ospf } counter return
+               masquerade
+         }
+}
+```
+ОБЯЗАТЕЛЬНО ПРОВЕРИТЬ ПРАВИЛЬНОСТЬ НАПИСАНИЯ!!! ОДНА ОШИБКА И ТЫ ОШИБСЯ 
+Перезагружаем	службу	сети	(делать	рекомендую	почаще	на	всех устройствах, если какие-то проблемы)
+```bash
+systemctl restart networking 
+```
+В случае, если какие-то IP-адреса пропадают — перезагружаем службы NetworkManager и networking по очереди:
+```bash
+systemctl restart NetworkManager 
+```
+```bash
+systemctl restart networking 
+```
 ---
 
 2. Доступ к сети Интернет (ISP) и настройка VLAN (HQ) 
